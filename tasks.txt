@@ -1,0 +1,3 @@
+convert and fix API
+Fix API weather , API github, API RSS reader. try to convert Json to char. don't show result
+9/2
