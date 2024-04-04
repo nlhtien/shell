@@ -22,6 +22,10 @@
 #include <sys/statvfs.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <sys/socket.h>
+#define PORT 8080
 
 //#include <opencv2/opencv.hpp>
 //#include <opencv2/highgui/highgui.hpp>
@@ -33,7 +37,7 @@
 #define INPUT_SIZE2 10
 #define CUTTING_WORD " \n"
 #define ENDING_WORD "exit"
-#define PORT 12345
+//#define PORT 12345
 // Màu cho text
 #define RED_TEXT "\x1B[31m"
 #define GREEN_TEXT "\x1B[32m"
@@ -71,7 +75,7 @@ void removeTask();
 void addTask();
 void displayTasks();
 void* connectThread(void* arg);
-void *handleClient(void *arg);
+//void *handleClient(void *arg);
 void displayWeatherInfo(const char *jsonString);
 void displayCalendar(int year, int month);
 void handleday();
@@ -722,68 +726,71 @@ void subFunction4() {
 
 
 void* connectThread(void* arg) {
-    char serverIP[INPUT_SIZE];
-    int serverPort;
-
-    printf("Enter server IP: ");
-    fgets(serverIP, INPUT_SIZE, stdin);
-
-    size_t len = strlen(serverIP);
-    if (len > 0 && serverIP[len - 1] == '\n') {
-        serverIP[len - 1] = '\0';
+    int server_fd, new_socket;
+    ssize_t valread;
+    struct sockaddr_in address;
+    int opt = 1;
+    socklen_t addrlen = sizeof(address);
+    char buffer[1024] = { 0 };
+    char buffer2[1024] = { 0 };
+    char* hello = "Hello from server";
+ 
+    // Creating socket file descriptor
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
     }
-
-    char portStr[INPUT_SIZE];
-    printf("Enter server port: ");
-    fgets(portStr, sizeof(portStr), stdin);
-
-    if (sscanf(portStr, "%d", &serverPort) != 1) {
-    	fprintf(stderr, "Invalid port input.\n");
-    	return NULL;
+ 
+    // Forcefully attaching socket to the port 8080
+    if (setsockopt(server_fd, SOL_SOCKET,
+                   SO_REUSEADDR | SO_REUSEPORT, &opt,
+                   sizeof(opt))) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
     }
-
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF);
-
-    int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (clientSocket == -1) {
-        perror("Socket creation failed");
-        return NULL;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+ 
+    // Forcefully attaching socket to the port 8080
+    if (bind(server_fd, (struct sockaddr*)&address,
+             sizeof(address))
+        < 0) {
+        perror("bind failed");
+        exit(EXIT_FAILURE);
     }
-
-    struct sockaddr_in serverAddr;
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(serverPort);
-    if (inet_pton(AF_INET, serverIP, &serverAddr.sin_addr) <= 0) {
-        perror("Invalid address/ Address not supported");
-        close(clientSocket);
-        return NULL;
+    if (listen(server_fd, 3) < 0) {
+        perror("listen");
+        exit(EXIT_FAILURE);
     }
-
-    if (connect(clientSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
-        perror("Connection failed");
-        close(clientSocket);
-        return NULL;
+    if ((new_socket
+         = accept(server_fd, (struct sockaddr*)&address,
+                  &addrlen))
+        < 0) {
+        perror("accept");
+        exit(EXIT_FAILURE);
     }
+    while (1) {
 
-    printf("Connected to server (%s:%d)\n", serverIP, serverPort);
+        read(new_socket, buffer, 1024-1);
+        printf("Client: %s\n", buffer);
 
-    pthread_t clientThread;
-    if (pthread_create(&clientThread, NULL, handleClient, &clientSocket) != 0) {
-        perror("Thread creation failed");
-        close(clientSocket);
-        return NULL;
+        // Gửi dữ liệu đến máy khách
+        printf("Enter message to send to client: ");
+        fgets(buffer2, 1024-1, stdin);
+        send(new_socket, buffer2, strlen(buffer2), 0);
     }
-
-    pthread_detach(clientThread);
-
-    // Không cần pthread_join ở đây nếu bạn đã detach thread.
+ 
+    // closing the connected socket
+    close(new_socket);
+    // closing the listening socket
+    close(server_fd);
 
     return NULL;
 }
 
 
-void *handleClient(void *arg) {
+/*void *handleClient(void *arg) {
     int clientSocket = *((int *)arg);
 
     char buffer[1024];
@@ -796,7 +803,7 @@ void *handleClient(void *arg) {
     close(clientSocket);
 
     return NULL;
-}
+}*/
 void saveTasksToFile() {
     FILE *file = fopen(FILE_NAME, "w");
     if (file == NULL) {
